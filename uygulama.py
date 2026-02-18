@@ -31,7 +31,7 @@ nobet_gunleri = {
 }
 SIFRELER = {
     "Ferhat": "1453", "Emre": "2277", "Selim": "2007", "Mustafa": "4444",
-    "Veysel": "7955", "Furkan abi": "1999", "Osman": "6583"
+    "Veysel": "7955", "Furkan abi": "1999", "Osman": "7070"
 }
 YETKILI_KISILER = ["Furkan abi", "Selim"]
 
@@ -298,4 +298,5 @@ with tab7:
                     st.error(f"Hata oluştu! Dosya bozuk olabilir. Hata: {e}")
     else:
         st.caption("Veri yükleme işlemi sadece yetkililer içindir.")
+
 
