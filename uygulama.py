@@ -7,10 +7,9 @@ import pandas as pd
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Ekip Takip", page_icon="🕌", layout="centered")
 
-# --- CSS AYARLARI (Üst boşluk artırıldı) ---
+# --- CSS AYARLARI ---
 st.markdown("""
 <style>
-    /* Mobilde üstteki yazı kesilmesin diye boşluğu 5rem yaptık */
     .block-container {
         padding-top: 5rem;
         padding-bottom: 5rem;
@@ -101,10 +100,9 @@ if st.session_state["giris_yapan"] is None:
 
 aktif_kullanici = st.session_state["giris_yapan"]
 
-# --- ÜST BAR (Hoş geldin yazısı büyütüldü ve hizalandı) ---
+# --- ÜST BAR ---
 col_header, col_logout = st.columns([7, 3])
 with col_header:
-    # Markdown kullanarak daha büyük ve belirgin başlık
     st.markdown(f"### 👋 Hoş geldin, {aktif_kullanici}")
 with col_logout:
     if st.button("Çıkış Yap", use_container_width=True):
@@ -181,6 +179,8 @@ with tab4:
     st.subheader("📊 30 Günlük Özet")
     if aktif_kullanici in YETKILI_KISILER:
         toplam_gun = len(veri["gunluk_durum"])
+        st.info(f"Kayıtlı Gün Sayısı: **{toplam_gun}**") # Kaçıncı günde olduğunuzu gösterir
+        
         for kisi in ekip:
             r_say, y_say, t_say = 0, 0, 0
             for tarih in veri["gunluk_durum"]:
@@ -191,21 +191,19 @@ with tab4:
             
             with st.expander(f"👤 {kisi} - Detaylar"):
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Risale", f"{r_say}", f"-{toplam_gun-r_say}")
-                m2.metric("Yasin", f"{y_say}", f"-{toplam_gun-y_say}")
-                m3.metric("Teravih", f"{t_say}", f"-{toplam_gun-t_say}")
+                # BURASI GÜNCELLENDİ: Artık "5 / 7" şeklinde gösteriyor
+                m1.metric("Risale", f"{r_say} / {toplam_gun}", f"-{toplam_gun-r_say} Eksik")
+                m2.metric("Yasin", f"{y_say} / {toplam_gun}", f"-{toplam_gun-y_say} Eksik")
+                m3.metric("Teravih", f"{t_say} / {toplam_gun}", f"-{toplam_gun-t_say} Eksik")
         
         st.divider()
-        # --- İSTATİSTİK SIFIRLAMA BUTONU ---
         st.warning("⚠️ Tehlikeli Bölge")
         if st.button("Tüm Verileri ve İstatistikleri Sıfırla", type="primary"):
-            # Tüm geçmişi siliyoruz ama bugünün boş kaydını tekrar açıyoruz
             veri["gunluk_durum"] = {}
             veri["cezalar"] = {}
             veri_kaydet(veri)
-            st.success("Tüm istatistikler ve cezalar başarıyla silindi!")
+            st.success("Sıfırlandı!")
             st.rerun()
-            
     else:
         st.warning("Bu alanı sadece yetkililer görebilir.")
 
@@ -224,7 +222,7 @@ with tab5:
         st.markdown(f"**🛋️ Salon:**\n{ap['Salon']}")
     st.error(f"😴 **İzinli:** {ap['İzinli']}")
     st.divider()
-    st.caption("📅 Tüm Haftaların Programı (Yana kaydırılabilir)")
+    st.caption("📅 Tüm Haftaların Programı")
     df_temizlik = pd.DataFrame(temizlik_programi)
     st.dataframe(df_temizlik, hide_index=True, use_container_width=True)
 
@@ -251,4 +249,3 @@ with tab6:
                 veri["notlar"].append(yeni_not_objesi)
                 veri_kaydet(veri)
                 st.rerun()
-
