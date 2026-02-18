@@ -30,8 +30,8 @@ nobet_gunleri = {
     6: "Ferhat", 0: "Emre", 1: "Selim", 2: "Mustafa", 3: "Veysel", 4: "Furkan abi", 5: "Osman"
 }
 SIFRELER = {
-    "Ferhat": "1111", "Emre": "2222", "Selim": "1234", "Mustafa": "4444",
-    "Veysel": "5555", "Furkan abi": "6666", "Osman": "7777"
+    "Ferhat": "1453", "Emre": "2277", "Selim": "2007", "Mustafa": "4434",
+    "Veysel": "7955", "Furkan abi": "1999", "Osman": "6583"
 }
 YETKILI_KISILER = ["Furkan abi", "Selim"]
 
@@ -260,3 +260,4 @@ with tab6:
                 veri["notlar"].append(yeni_not_objesi)
                 veri_kaydet(veri)
                 st.rerun()
+
