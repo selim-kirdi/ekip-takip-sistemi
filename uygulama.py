@@ -57,8 +57,19 @@ def veri_kaydet(veri):
     with open(DOSYA, "w", encoding="utf-8") as f:
         json.dump(veri, f, ensure_ascii=False, indent=4)
 
+
 veri = veri_yukle()
-bugun_str = str(datetime.date.today())
+
+# --- GÖREV SIFIRLAMA SAATİ AYARI (03:30) ---
+simdi = datetime.datetime.now()
+
+# Eğer saat 03:30'dan önceyse, tarih olarak "DÜNÜ" baz al
+if simdi.hour < 3 or (simdi.hour == 3 and simdi.minute < 30):
+    gorev_tarihi = simdi.date() - datetime.timedelta(days=1)
+else:
+    gorev_tarihi = simdi.date()
+
+bugun_str = str(gorev_tarihi)
 
 # Veri Kontrolleri
 if "gunluk_durum" not in veri: veri["gunluk_durum"] = {}
@@ -298,5 +309,3 @@ with tab7:
                     st.error(f"Hata oluştu! Dosya bozuk olabilir. Hata: {e}")
     else:
         st.caption("Veri yükleme işlemi sadece yetkililer içindir.")
-
-
