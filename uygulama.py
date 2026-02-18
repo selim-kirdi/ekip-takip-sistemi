@@ -4,23 +4,21 @@ import datetime
 import os
 import pandas as pd
 
-# --- SAYFA AYARLARI (Mobil Görünüm İçin Önemli) ---
+# --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Ekip Takip", page_icon="🕌", layout="centered")
 
-# --- ARKA PLAN VE STİL AYARLARI ---
+# --- CSS AYARLARI (Üst boşluk artırıldı) ---
 st.markdown("""
 <style>
-    /* Mobilde üstteki boşluğu azalt */
+    /* Mobilde üstteki yazı kesilmesin diye boşluğu 5rem yaptık */
     .block-container {
-        padding-top: 2rem;
+        padding-top: 5rem;
         padding-bottom: 5rem;
     }
-    /* Giriş ekranı kutusu */
     .login-box {
         background-color: #f0f2f6;
         padding: 20px;
         border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         text-align: center;
     }
 </style>
@@ -69,64 +67,54 @@ if bugun_str not in veri["gunluk_durum"]:
     veri["gunluk_durum"][bugun_str] = {kisi: {"risale": False, "yasin": False, "teravih": False} for kisi in ekip}
     veri_kaydet(veri)
 
-# 30 Günlük Temizlik
 otuz_gun_once = str(datetime.date.today() - datetime.timedelta(days=30))
 kayitli_tarihler = sorted(list(veri["gunluk_durum"].keys()))
 for eski_tarih in kayitli_tarihler:
     if eski_tarih < otuz_gun_once: del veri["gunluk_durum"][eski_tarih]
 
-# --- LOGIN SİSTEMİ (ARTIK MERKEZDE VE BENİ HATIRLA ÖZELLİKLİ) ---
+# --- LOGIN SİSTEMİ ---
 if "giris_yapan" not in st.session_state:
-    # URL'den kullanıcıyı kontrol et (Beni Hatırla kontrolü)
     params = st.query_params
     if "kullanici" in params and params["kullanici"] in ekip:
         st.session_state["giris_yapan"] = params["kullanici"]
     else:
         st.session_state["giris_yapan"] = None
 
-# Eğer giriş yapılmamışsa ORTADA giriş formunu göster
 if st.session_state["giris_yapan"] is None:
     st.markdown("<h1 style='text-align: center;'>🕌 Ekip Takip</h1>", unsafe_allow_html=True)
-    st.write("") # Boşluk
-    
-    col1, col2, col3 = st.columns([1, 6, 1]) # Formu ortalamak için
+    st.write("")
+    col1, col2, col3 = st.columns([1, 6, 1])
     with col2:
         with st.form("giris_formu"):
-            st.info("Devam etmek için lütfen giriş yapın.")
-            secilen_kisi = st.selectbox("İsim Seçiniz", ["Seçiniz..."] + ekip)
+            st.info("Giriş Yap")
+            secilen_kisi = st.selectbox("İsim", ["Seçiniz..."] + ekip)
             girilen_sifre = st.text_input("Şifre", type="password")
-            beni_hatirla = st.checkbox("Beni Hatırla (Oturumu açık tut)")
-            
-            giris_butonu = st.form_submit_button("Giriş Yap", use_container_width=True)
-            
-            if giris_butonu:
+            beni_hatirla = st.checkbox("Beni Hatırla")
+            if st.form_submit_button("Giriş", use_container_width=True):
                 if secilen_kisi != "Seçiniz..." and SIFRELER[secilen_kisi] == girilen_sifre:
                     st.session_state["giris_yapan"] = secilen_kisi
-                    # Eğer beni hatırla dediyse URL'ye parametre ekle
-                    if beni_hatirla:
-                        st.query_params["kullanici"] = secilen_kisi
+                    if beni_hatirla: st.query_params["kullanici"] = secilen_kisi
                     st.rerun()
                 else:
-                    st.error("Hatalı şifre veya isim seçimi!")
-    st.stop() # Giriş yapılmadıysa kodun geri kalanını durdur
+                    st.error("Hatalı şifre!")
+    st.stop()
 
-# --- GİRİŞ YAPILDIKTAN SONRAKİ KISIM ---
 aktif_kullanici = st.session_state["giris_yapan"]
 
-# Üst Bar (Çıkış Butonu Sağ Üstte)
-col_header, col_logout = st.columns([7, 2])
+# --- ÜST BAR (Hoş geldin yazısı büyütüldü ve hizalandı) ---
+col_header, col_logout = st.columns([7, 3])
 with col_header:
-    st.write(f"Hoş geldin, **{aktif_kullanici}** 👋")
+    # Markdown kullanarak daha büyük ve belirgin başlık
+    st.markdown(f"### 👋 Hoş geldin, {aktif_kullanici}")
 with col_logout:
-    if st.button("Çıkış Yap"):
+    if st.button("Çıkış Yap", use_container_width=True):
         st.session_state["giris_yapan"] = None
-        st.query_params.clear() # Beni hatırla verisini sil
+        st.query_params.clear()
         st.rerun()
 
-# --- SEKME DÜZENİ (NOTLAR EN SONA ALINDI) ---
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🛡️ Nöbet", "📚 Görev", "⚖️ Ceza", "📊 İstatistik", "🧹 Temizlik", "📝 Notlar"])
 
-with tab1: # NÖBET
+with tab1:
     bugun_index = datetime.datetime.now().weekday()
     gunun_nobetcisi = nobet_gunleri[bugun_index]
     st.markdown(f"""
@@ -136,10 +124,9 @@ with tab1: # NÖBET
     </div>
     """, unsafe_allow_html=True)
 
-with tab2: # GÖREVLER
+with tab2:
     st.header(f"Görevler ({bugun_str})")
     for kisi in ekip:
-        # Kişiye özel kutu tasarımı
         with st.container():
             st.markdown(f"**👤 {kisi}**")
             kutu_kilitli_mi = (kisi != aktif_kullanici)
@@ -158,7 +145,7 @@ with tab2: # GÖREVLER
                 st.rerun()
             st.divider()
 
-with tab3: # CEZALAR
+with tab3:
     st.subheader("Aktif Cezalar")
     aktif_ceza_var = False
     for kisi, ceza_listesi in veri.get("cezalar", {}).items():
@@ -190,7 +177,7 @@ with tab3: # CEZALAR
                     st.success("Yazıldı!")
                     st.rerun()
 
-with tab4: # İSTATİSTİKLER
+with tab4:
     st.subheader("📊 30 Günlük Özet")
     if aktif_kullanici in YETKILI_KISILER:
         toplam_gun = len(veri["gunluk_durum"])
@@ -204,21 +191,30 @@ with tab4: # İSTATİSTİKLER
             
             with st.expander(f"👤 {kisi} - Detaylar"):
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Risale", f"{r_say}", f"-{toplam_gun-r_say} Eksik")
-                m2.metric("Yasin", f"{y_say}", f"-{toplam_gun-y_say} Eksik")
-                m3.metric("Teravih", f"{t_say}", f"-{toplam_gun-t_say} Eksik")
+                m1.metric("Risale", f"{r_say}", f"-{toplam_gun-r_say}")
+                m2.metric("Yasin", f"{y_say}", f"-{toplam_gun-y_say}")
+                m3.metric("Teravih", f"{t_say}", f"-{toplam_gun-t_say}")
+        
+        st.divider()
+        # --- İSTATİSTİK SIFIRLAMA BUTONU ---
+        st.warning("⚠️ Tehlikeli Bölge")
+        if st.button("Tüm Verileri ve İstatistikleri Sıfırla", type="primary"):
+            # Tüm geçmişi siliyoruz ama bugünün boş kaydını tekrar açıyoruz
+            veri["gunluk_durum"] = {}
+            veri["cezalar"] = {}
+            veri_kaydet(veri)
+            st.success("Tüm istatistikler ve cezalar başarıyla silindi!")
+            st.rerun()
+            
     else:
         st.warning("Bu alanı sadece yetkililer görebilir.")
 
-with tab5: # TEMİZLİK (MOBİL UYUMLU)
+with tab5:
     st.subheader("🧹 Temizlik Programı")
     yh = datetime.datetime.now().isocalendar()[1]
     index = yh % 6
     ap = temizlik_programi[index]
-    
-    # 1. Kısım: Sadece bu haftayı KART şeklinde göster (Mobilde harika görünür)
     st.info(f"📍 **Şu anki Hafta: {ap['Hafta']}**")
-    
     col_t1, col_t2 = st.columns(2)
     with col_t1:
         st.markdown(f"**🚿 Banyo:**\n{ap['Banyo']}")
@@ -226,18 +222,13 @@ with tab5: # TEMİZLİK (MOBİL UYUMLU)
     with col_t2:
         st.markdown(f"**🍽️ Mutfak:**\n{ap['Mutfak']}")
         st.markdown(f"**🛋️ Salon:**\n{ap['Salon']}")
-        
     st.error(f"😴 **İzinli:** {ap['İzinli']}")
-    
     st.divider()
-    
-    # 2. Kısım: Tüm listeyi 'Dataframe' olarak göster (Mobilde yana kayar, patlamaz)
     st.caption("📅 Tüm Haftaların Programı (Yana kaydırılabilir)")
-    # Pandas DataFrame kullanarak mobilde kaydırılabilir tablo yapıyoruz
     df_temizlik = pd.DataFrame(temizlik_programi)
     st.dataframe(df_temizlik, hide_index=True, use_container_width=True)
 
-with tab6: # NOTLAR (EN SONA ALINDI)
+with tab6:
     st.header("Ortak Notlar")
     notlar_listesi = veri.get("notlar", [])
     for i, not_verisi in enumerate(notlar_listesi):
@@ -252,7 +243,6 @@ with tab6: # NOTLAR (EN SONA ALINDI)
                     veri["notlar"].pop(i)
                     veri_kaydet(veri)
                     st.rerun()
-    
     with st.form("not_form"):
         yeni_not = st.text_input("Notunuzu yazın...")
         if st.form_submit_button("Paylaş"):
@@ -261,3 +251,4 @@ with tab6: # NOTLAR (EN SONA ALINDI)
                 veri["notlar"].append(yeni_not_objesi)
                 veri_kaydet(veri)
                 st.rerun()
+
