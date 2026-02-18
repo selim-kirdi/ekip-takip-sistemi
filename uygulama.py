@@ -30,8 +30,8 @@ nobet_gunleri = {
     6: "Ferhat", 0: "Emre", 1: "Selim", 2: "Mustafa", 3: "Veysel", 4: "Furkan abi", 5: "Osman"
 }
 SIFRELER = {
-    "Ferhat": "1453", "Emre": "2277", "Selim": "2007", "Mustafa": "4434",
-    "Veysel": "7955", "Furkan abi": "1999", "Osman": "6583"
+    "Ferhat": "1111", "Emre": "2222", "Selim": "1234", "Mustafa": "4444",
+    "Veysel": "5555", "Furkan abi": "6666", "Osman": "7777"
 }
 YETKILI_KISILER = ["Furkan abi", "Selim"]
 
@@ -46,8 +46,11 @@ temizlik_programi = [
 
 def veri_yukle():
     if os.path.exists(DOSYA):
-        with open(DOSYA, "r", encoding="utf-8") as f:
-            return json.load(f)
+        try:
+            with open(DOSYA, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {"gunluk_durum": {}, "cezalar": {}, "notlar": []}
     return {"gunluk_durum": {}, "cezalar": {}, "notlar": []}
 
 def veri_kaydet(veri):
@@ -110,7 +113,8 @@ with col_logout:
         st.query_params.clear()
         st.rerun()
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🛡️ Nöbet", "📚 Görev", "⚖️ Ceza", "📊 İstatistik", "🧹 Temizlik", "📝 Notlar"])
+# --- YENİ TAB EKLENDİ: YEDEKLEME ---
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🛡️ Nöbet", "📚 Görev", "⚖️ Ceza", "📊 İstatistik", "🧹 Temizlik", "📝 Notlar", "💾 Yedekle"])
 
 with tab1:
     bugun_index = datetime.datetime.now().weekday()
@@ -195,7 +199,6 @@ with tab4:
                 m2.metric("Yasin", f"{y_say} / {toplam_gun}", f"-{toplam_gun-y_say} Eksik")
                 m3.metric("Teravih", f"{t_say} / {toplam_gun}", f"-{toplam_gun-t_say} Eksik")
         
-        # --- CEZA GEÇMİŞİ EKLENDİ ---
         st.divider()
         st.subheader("⚖️ Ceza Geçmişi")
         for kisi in ekip:
@@ -203,7 +206,6 @@ with tab4:
             if ceza_listesi:
                 with st.expander(f"📌 {kisi} - Ceza Kayıtları"):
                     for c in ceza_listesi:
-                        # Tamamlandıysa Yeşil Tik, Değilse Kırmızı Çarpı
                         ikon = "✅ Tamamlandı" if c.get("tamamlandi") else "❌ Bekliyor"
                         st.write(f"**{ikon}** - {c['neden']} *({c['tarih']})*")
         
@@ -261,3 +263,38 @@ with tab6:
                 veri_kaydet(veri)
                 st.rerun()
 
+# --- YENİ EKLENEN YEDEKLEME SEKMESİ ---
+with tab7:
+    st.header("💾 Veri Yedekleme (Kurtarıcı)")
+    st.info("Eğer site sıfırlanırsa verileri kaybetmemek için buradan yedek al!")
+    
+    # 1. VERİYİ İNDİRME BUTONU
+    json_verisi = json.dumps(veri, ensure_ascii=False, indent=4)
+    tarih_saat = datetime.datetime.now().strftime("%Y-%m-%d")
+    st.download_button(
+        label="📥 Güncel Verileri İndir (Yedekle)",
+        data=json_verisi,
+        file_name=f"ekip_takip_yedek_{tarih_saat}.json",
+        mime="application/json"
+    )
+    
+    st.divider()
+    
+    # 2. VERİYİ GERİ YÜKLEME KUTUSU (Sadece Yetkililer)
+    if aktif_kullanici in YETKILI_KISILER:
+        st.subheader("📤 Yedeği Geri Yükle")
+        st.warning("DİKKAT: Dosya yüklersen şu anki verilerin silinir ve yüklediğin dosyadaki veriler geçerli olur.")
+        
+        yuklenen_dosya = st.file_uploader("Elinizdeki yedek .json dosyasını buraya bırakın", type=["json"])
+        
+        if yuklenen_dosya is not None:
+            if st.button("Verileri Kurtar / Yükle"):
+                try:
+                    eski_veri = json.load(yuklenen_dosya)
+                    veri_kaydet(eski_veri)
+                    st.success("Veriler başarıyla kurtarıldı! Sayfa yenileniyor...")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Hata oluştu! Dosya bozuk olabilir. Hata: {e}")
+    else:
+        st.caption("Veri yükleme işlemi sadece yetkililer içindir.")
