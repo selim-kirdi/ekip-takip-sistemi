@@ -57,17 +57,18 @@ def veri_kaydet(veri):
     with open(DOSYA, "w", encoding="utf-8") as f:
         json.dump(veri, f, ensure_ascii=False, indent=4)
 
-
 veri = veri_yukle()
 
-# --- GÖREV SIFIRLAMA SAATİ AYARI (03:30) ---
-simdi = datetime.datetime.now()
+# --- SAAT VE TARİH AYARLARI ---
+# 1. Türkiye Saatini Bul (+3 Saat)
+tr_zamani = datetime.datetime.now() + datetime.timedelta(hours=3)
 
-# Eğer saat 03:30'dan önceyse, tarih olarak "DÜNÜ" baz al
-if simdi.hour < 3 or (simdi.hour == 3 and simdi.minute < 30):
-    gorev_tarihi = simdi.date() - datetime.timedelta(days=1)
+# 2. GÖREVLER İÇİN TARİH (03:30'da değişsin)
+# Eğer saat 03:30'dan önceyse, görevler hala "DÜNÜN" görevidir.
+if tr_zamani.hour < 3 or (tr_zamani.hour == 3 and tr_zamani.minute < 30):
+    gorev_tarihi = tr_zamani.date() - datetime.timedelta(days=1)
 else:
-    gorev_tarihi = simdi.date()
+    gorev_tarihi = tr_zamani.date()
 
 bugun_str = str(gorev_tarihi)
 
@@ -80,6 +81,7 @@ if bugun_str not in veri["gunluk_durum"]:
     veri["gunluk_durum"][bugun_str] = {kisi: {"risale": False, "yasin": False, "teravih": False} for kisi in ekip}
     veri_kaydet(veri)
 
+# Eski verileri temizle
 otuz_gun_once = str(datetime.date.today() - datetime.timedelta(days=30))
 kayitli_tarihler = sorted(list(veri["gunluk_durum"].keys()))
 for eski_tarih in kayitli_tarihler:
@@ -119,21 +121,33 @@ col_header, col_logout = st.columns([7, 3])
 with col_header:
     st.markdown(f"### 👋 Hoş geldin, {aktif_kullanici}")
 with col_logout:
-    if st.button("Çıkış Yap", use_container_width=True):
+    if st.button("Çıkış Yap", use_container_width=True, key="cikis_btn_unique"):
         st.session_state["giris_yapan"] = None
         st.query_params.clear()
         st.rerun()
 
-# --- YENİ TAB EKLENDİ: YEDEKLEME ---
+# --- TABLAR ---
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🛡️ Nöbet", "📚 Görev", "⚖️ Ceza", "📊 İstatistik", "🧹 Temizlik", "📝 Notlar", "💾 Yedekle"])
 
 with tab1:
-    bugun_index = datetime.datetime.now().weekday()
+    # --- NÖBETÇİ DEĞİŞİMİ SAAT 23:00 AYARI ---
+    if tr_zamani.hour >= 23:
+        # Saat 23:00 ve sonrasıysa YARININ nöbetçisini göster
+        nobet_icin_tarih = tr_zamani + datetime.timedelta(days=1)
+        baslik_ek = "(Yarının Nöbetçisi - 23:00'den Sonra)"
+    else:
+        # Saat 23:00'den önceyse BUGÜNÜN nöbetçisini göster
+        nobet_icin_tarih = tr_zamani
+        baslik_ek = ""
+
+    bugun_index = nobet_icin_tarih.weekday()
     gunun_nobetcisi = nobet_gunleri[bugun_index]
+    
     st.markdown(f"""
     <div style="background-color:#d4edda;padding:20px;border-radius:10px;text-align:center;border:2px solid #c3e6cb;">
-        <h3 style="color:#155724;margin:0;">Bugünün Nöbetçisi</h3>
+        <h3 style="color:#155724;margin:0;">Nöbetçi {baslik_ek}</h3>
         <h1 style="color:#155724;font-size:40px;">{gunun_nobetcisi.upper()}</h1>
+        <p style="color:#155724;margin:0;">{nobet_icin_tarih.strftime('%d.%m.%Y')}</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -233,7 +247,8 @@ with tab4:
 
 with tab5:
     st.subheader("🧹 Temizlik Programı")
-    yh = datetime.datetime.now().isocalendar()[1]
+    # Haftayı TR saatine göre hesapla
+    yh = tr_zamani.isocalendar()[1]
     index = yh % 6
     ap = temizlik_programi[index]
     st.info(f"📍 **Şu anki Hafta: {ap['Hafta']}**")
@@ -274,18 +289,17 @@ with tab6:
                 veri_kaydet(veri)
                 st.rerun()
 
-# --- YENİ EKLENEN YEDEKLEME SEKMESİ ---
 with tab7:
     st.header("💾 Veri Yedekleme (Kurtarıcı)")
     st.info("Eğer site sıfırlanırsa verileri kaybetmemek için buradan yedek al!")
     
     # 1. VERİYİ İNDİRME BUTONU
     json_verisi = json.dumps(veri, ensure_ascii=False, indent=4)
-    tarih_saat = datetime.datetime.now().strftime("%Y-%m-%d")
+    tarih_saat_str = tr_zamani.strftime("%Y-%m-%d")
     st.download_button(
         label="📥 Güncel Verileri İndir (Yedekle)",
         data=json_verisi,
-        file_name=f"ekip_takip_yedek_{tarih_saat}.json",
+        file_name=f"ekip_takip_yedek_{tarih_saat_str}.json",
         mime="application/json"
     )
     
