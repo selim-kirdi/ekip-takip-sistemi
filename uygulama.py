@@ -218,39 +218,27 @@ with tab3: # CEZA
 with tab4: # İSTATİSTİK
     st.subheader("📊 30 Günlük Özet")
     if aktif_kullanici in YETKILI_KISILER:
-        toplam_gun_sayisi = len(veri["gunluk_durum"])
         
-        # Bugün henüz kimse işlem yapmadıysa, bugünü istatistiğe dahil etme
-        bugun_bos_mu = True
-        if bugun_str in veri["gunluk_durum"]:
-            for k in ekip:
-                d = veri["gunluk_durum"][bugun_str][k]
-                if d["risale"] or d["yasin"] or d["teravih"]:
-                    bugun_bos_mu = False
-                    break
+        # --- YENİ MANTIK: Sadece bitmiş günleri (bugün hariç) say ---
+        gecmis_gunler = [tarih for tarih in veri["gunluk_durum"].keys() if tarih != bugun_str]
+        gosterilecek_gun_sayisi = len(gecmis_gunler)
         
-        if bugun_bos_mu and toplam_gun_sayisi > 0:
-            gosterilecek_gun_sayisi = toplam_gun_sayisi - 1
-        else:
-            gosterilecek_gun_sayisi = toplam_gun_sayisi
-            
-        if gosterilecek_gun_sayisi == 0: gosterilecek_gun_sayisi = 1
+        # İlk açılışta (hiç geçmiş gün yoksa) hatayı önlemek için
+        if gosterilecek_gun_sayisi == 0: 
+            gosterilecek_gun_sayisi = 1
 
-        st.info(f"Hesaplanan Gün Sayısı: **{gosterilecek_gun_sayisi}**")
+        st.info(f"Hesaplanan Geçmiş Gün Sayısı: **{gosterilecek_gun_sayisi}**")
 
         for kisi in ekip:
             r_say, y_say, t_say = 0, 0, 0
-            for tarih, gun_verisi in veri["gunluk_durum"].items():
-                if tarih == bugun_str and bugun_bos_mu:
-                    continue
-                d = gun_verisi.get(kisi, {})
+            for tarih in gecmis_gunler:
+                d = veri["gunluk_durum"][tarih].get(kisi, {})
                 if d.get("risale"): r_say += 1
                 if d.get("yasin"): y_say += 1
                 if d.get("teravih"): t_say += 1
             
             with st.expander(f"👤 {kisi} - Detaylar"):
                 m1, m2, m3 = st.columns(3)
-                # İstediğiniz gibi kesirli formatta (örn: 3/4) gösterilir
                 m1.metric("Risale", f"{r_say}/{gosterilecek_gun_sayisi}", f"{(gosterilecek_gun_sayisi-r_say) * -1} Eksik")
                 m2.metric("Yasin", f"{y_say}/{gosterilecek_gun_sayisi}", f"{(gosterilecek_gun_sayisi-y_say) * -1} Eksik")
                 m3.metric("Teravih", f"{t_say}/{gosterilecek_gun_sayisi}", f"{(gosterilecek_gun_sayisi-t_say) * -1} Eksik")
@@ -324,3 +312,4 @@ with tab7: # YEDEKLEME
                 st.rerun()
             except Exception as e:
                 st.error(f"Hata: {e}")
+
