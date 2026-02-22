@@ -156,22 +156,23 @@ if arkaplan_url:
         background-position: center;
     }}
     
-    /* İçerik kutusunun (beyaz karenin) yeni stili */
+    /* İçerik kutusunun daha okunaklı ve şık stili (Mobilde resmi göstermesi için güncellendi) */
     .block-container {{
-        /* Koyu ve yarı saydam arka plan */
-        background-color: rgba(0, 0, 0, 0.65) !important; 
-        /* Buzlu cam efekti (arkayı bulanıklaştırır) */
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        /* İnce, şık bir kenarlık */
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        /* Köşeleri yuvarlatma ve gölge */
+        /* Şeffaflık %88'den %60'a düşürüldü, böylece resim daha net görünecek */
+        background-color: rgba(15, 15, 20, 0.60) !important; 
+        /* Bulanıklık azaltıldı */
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 20px;
-        padding: 2rem;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+        padding: 1.5rem !important;
+        /* Telefonda ekranın tam kenarına yapışıp resmi kapatmaması için %95 genişlik verildi */
+        max-width: 95% !important; 
+        margin: 2rem auto !important; 
+        box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.6);
     }}
 
-    /* Kutunun içindeki tüm başlık ve yazıları beyaz yap */
+    /* Tüm metin renklerini beyaza zorla ve gölge ekle (Okunabilirlik için çok önemli) */
     .block-container h1, 
     .block-container h2, 
     .block-container h3, 
@@ -181,13 +182,13 @@ if arkaplan_url:
     .stMarkdown,
     .stMetricLabel,
     .stMetricValue {{
-        color: #ffffff !important;
-        text-shadow: 0px 1px 2px rgba(0,0,0,0.6); /* Yazılara hafif gölge vererek netliği artır */
+        color: #f0f2f6 !important;
+        text-shadow: 0px 2px 4px rgba(0,0,0,0.9);
     }}
 
-    /* Sekme (Tab) başlıklarını düzelt */
+    /* Sekme başlıklarının rengi */
     .stTabs [data-baseweb="tab"] {{
-        color: #ffffff !important;
+        color: #f0f2f6 !important;
     }}
     </style>
     """, unsafe_allow_html=True)
@@ -428,4 +429,5 @@ with tab6: # ÇAMAŞIR MAKİNESİ
                         veri["camasir"].remove(r)
                         veri_kaydet(veri)
                         st.rerun()
+
 
