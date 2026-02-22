@@ -6,7 +6,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="RAMAZN programı", page_icon="🕌", layout="centered")
+st.set_page_config(page_title="RAMAZAN Programı", page_icon="🕌", layout="centered")
 
 # --- CSS AYARLARI ---
 st.markdown("""
@@ -34,15 +34,16 @@ def get_google_sheet():
 
 def veri_yukle():
     """Veriyi Google Sheets A1 hücresinden çeker."""
+    varsayilan = {"gunluk_durum": {}, "cezalar": {}, "camasir": [], "nobet_notlari": [], "ayarlar": {"arkaplan": ""}}
     try:
         sheet = get_google_sheet()
         veri_raw = sheet.acell('A1').value
         if veri_raw:
             return json.loads(veri_raw)
         else:
-            return {"gunluk_durum": {}, "cezalar": {}, "notlar": [], "camasir": []}
+            return varsayilan
     except Exception as e:
-        return {"gunluk_durum": {}, "cezalar": {}, "notlar": [], "camasir": []}
+        return varsayilan
 
 def veri_kaydet(veri):
     """Veriyi Google Sheets A1 hücresine yazar."""
@@ -89,23 +90,22 @@ bugun_str = str(gorev_tarihi)
 # Veri Başlatma Kontrolleri
 if "gunluk_durum" not in veri: veri["gunluk_durum"] = {}
 if "cezalar" not in veri: veri["cezalar"] = {}
-if "notlar" not in veri: veri["notlar"] = []
 if "camasir" not in veri: veri["camasir"] = []
+if "nobet_notlari" not in veri: veri["nobet_notlari"] = []
+if "ayarlar" not in veri: veri["ayarlar"] = {"arkaplan": ""}
 
 if bugun_str not in veri["gunluk_durum"]:
     veri["gunluk_durum"][bugun_str] = {kisi: {"risale": False, "yasin": False, "teravih": False} for kisi in ekip}
     veri_kaydet(veri)
 
-# ESKİ VERİLERİ TEMİZLEME (Günlük Durum ve Çamaşır)
+# ESKİ VERİLERİ TEMİZLEME
 degisiklik_var = False
-
 otuz_gun_once = str(datetime.date.today() - datetime.timedelta(days=30))
 for eski_tarih in list(veri["gunluk_durum"].keys()):
     if eski_tarih < otuz_gun_once: 
         del veri["gunluk_durum"][eski_tarih]
         degisiklik_var = True
 
-# Çamaşır için "Bugün"den önceki randevuları sil (böylece kişinin 3 hakkı geri gelir)
 eski_camasir_sayisi = len(veri["camasir"])
 veri["camasir"] = [c for c in veri["camasir"] if c["tarih"] >= tr_zamani.strftime("%Y-%m-%d")]
 if len(veri["camasir"]) != eski_camasir_sayisi:
@@ -143,6 +143,67 @@ if st.session_state["giris_yapan"] is None:
 
 aktif_kullanici = st.session_state["giris_yapan"]
 
+# --- DİNAMİK ARKA PLAN UYGULAMASI ---
+arkaplan_url = veri["ayarlar"].get("arkaplan", "")
+if arkaplan_url:
+    st.markdown(f"""
+    <style>
+    /* Ana arka plan resmi ayarları */
+    .stApp {{
+        background-image: url("{arkaplan_url}");
+        background-size: cover;
+        background-attachment: fixed;
+        background-position: center;
+    }}
+    
+    /* İçerik kutusunun (beyaz karenin) yeni stili */
+    .block-container {{
+        /* Koyu ve yarı saydam arka plan */
+        background-color: rgba(0, 0, 0, 0.65) !important; 
+        /* Buzlu cam efekti (arkayı bulanıklaştırır) */
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        /* İnce, şık bir kenarlık */
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        /* Köşeleri yuvarlatma ve gölge */
+        border-radius: 20px;
+        padding: 2rem;
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+    }}
+
+    /* Kutunun içindeki tüm başlık ve yazıları beyaz yap */
+    .block-container h1, 
+    .block-container h2, 
+    .block-container h3, 
+    .block-container h4, 
+    .block-container p, 
+    .block-container label,
+    .stMarkdown,
+    .stMetricLabel,
+    .stMetricValue {{
+        color: #ffffff !important;
+        text-shadow: 0px 1px 2px rgba(0,0,0,0.6); /* Yazılara hafif gölge vererek netliği artır */
+    }}
+
+    /* Sekme (Tab) başlıklarını düzelt */
+    .stTabs [data-baseweb="tab"] {{
+        color: #ffffff !important;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- SADECE SELİM İÇİN ARKA PLAN AYARI (SIDEBAR) ---
+if aktif_kullanici == "Selim":
+    with st.sidebar:
+        st.subheader("⚙️ Ayarlar (Yetkili)")
+        yeni_bg = st.text_input("Arka Plan Resim Linki (URL)", value=arkaplan_url, placeholder="Örn: https://resim-linki.jpg")
+        if st.button("Duvar Kağıdını Kaydet/Uygula"):
+            veri["ayarlar"]["arkaplan"] = yeni_bg
+            veri_kaydet(veri)
+            st.success("Arka plan kaydedildi!")
+            st.rerun()
+        st.caption("Arka planı kaldırmak için kutuyu boş bırakıp kaydedin.")
+
 # --- ARAYÜZ ---
 col_header, col_logout = st.columns([7, 3])
 with col_header:
@@ -153,46 +214,60 @@ with col_logout:
         st.query_params.clear()
         st.rerun()
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🛡️ Nöbet", "📚 Görev", "⚖️ Ceza", "📊 İstatistik", "🧹 Temizlik", "🧺 Çamaşır", "📝 Notlar"])
+# 📝 Notlar sekmesi kaldırıldı.
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["🛡️ Nöbet", "📚 Görev", "⚖️ Ceza", "📊 İstatistik", "🧹 Temizlik", "🧺 Çamaşır"])
 
 with tab1: # NÖBET
     if tr_zamani.hour >= 23:
         nobet_icin_tarih = tr_zamani + datetime.timedelta(days=1)
-        baslik_ek = "(Yarının Nöbetçisi - 23:00'den Sonra)"
+        baslik_ek = "(Yarının Nöbetçisi)"
     else:
         nobet_icin_tarih = tr_zamani
         baslik_ek = ""
     gunun_nobetcisi = nobet_gunleri[nobet_icin_tarih.weekday()]
+    
     st.markdown(f"""
-    <div style="background-color:#d4edda;padding:20px;border-radius:10px;text-align:center;border:2px solid #c3e6cb;">
-        <h3 style="color:#155724;margin:0;">Nöbetçi {baslik_ek}</h3>
-        <h1 style="color:#155724;font-size:40px;">{gunun_nobetcisi.upper()}</h1>
-        <p style="color:#155724;margin:0;">{nobet_icin_tarih.strftime('%d.%m.%Y')}</p>
+    <div style="background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%); padding: 30px; border-radius: 15px; text-align: center; box-shadow: 0 8px 15px rgba(0,0,0,0.4); color: white; margin-bottom: 20px;">
+        <h3 style="margin:0; font-weight:300; opacity:0.9;">Nöbetçi {baslik_ek}</h3>
+        <h1 style="font-size: 45px; margin: 10px 0; font-weight: 800; letter-spacing: 2px;">{gunun_nobetcisi.upper()}</h1>
+        <p style="margin:0; font-size: 18px; opacity:0.8;">📅 {nobet_icin_tarih.strftime('%d.%m.%Y')}</p>
     </div>
     """, unsafe_allow_html=True)
+
+    st.subheader("📌 Nöbet Notları & Devir Teslim")
+    for i, n in enumerate(veri.get("nobet_notlari", [])):
+        c1, c2 = st.columns([8, 1])
+        with c1: st.warning(f"**{n['kim']} ({n['tarih']}):** {n['metin']}")
+        with c2:
+            if (n['kim'] == aktif_kullanici or aktif_kullanici in YETKILI_KISILER) and st.button("🗑️", key=f"del_nnote_{i}"):
+                veri["nobet_notlari"].pop(i)
+                veri_kaydet(veri)
+                st.rerun()
+    
+    with st.form("nobet_not_ekle"):
+        txt = st.text_input("Nöbetçiye not bırak veya nöbet durumu bildir...")
+        if st.form_submit_button("Nota Ekle") and txt:
+            veri["nobet_notlari"].append({"kim": aktif_kullanici, "metin": txt, "tarih": bugun_str})
+            veri_kaydet(veri)
+            st.rerun()
 
 with tab2:
     st.header(f"Görevler ({bugun_str})")
     for kisi in ekip:
-        # Her bir kişiyi şık bir çerçeve (kart) içine alıyoruz
         with st.container(border=True):
             g_verisi = veri["gunluk_durum"][bugun_str][kisi]
-            
-            # Kişinin tamamladığı görev sayısını hesaplıyoruz
             tamamlanan = sum([g_verisi.get("risale", False), g_verisi.get("yasin", False), g_verisi.get("teravih", False)])
             
-            # Aktif kullanıcıya (giriş yapan kişiye) özel başlık stili
             if kisi == aktif_kullanici:
                 st.markdown(f"### 👤 {kisi} (Sen)  —  `{tamamlanan}/3`")
             else:
                 st.markdown(f"#### 👤 {kisi}  —  `{tamamlanan}/3`")
 
-            # Görevler tamsa tebrik mesajı, değilse küçük bir ilerleme çubuğu
             if tamamlanan == 3:
                 st.success("🌟 Tüm görevler tamamlandı, tebrikler!")
             else:
-                st.progress(tamamlanan / 3) # 0.0, 0.33, 0.66 gibi ilerleme gösterir
-                st.write("") # Araya küçük bir boşluk
+                st.progress(tamamlanan / 3)
+                st.write("")
 
             kutu_kilitli_mi = (kisi != aktif_kullanici)
             col1, col2, col3 = st.columns(3)
@@ -201,13 +276,13 @@ with tab2:
             with col2: y_durum = st.checkbox("📿 Yasin", value=g_verisi.get("yasin", False), key=f"y_{kisi}", disabled=kutu_kilitli_mi)
             with col3: t_durum = st.checkbox("🕌 Teravih", value=g_verisi.get("teravih", False), key=f"t_{kisi}", disabled=kutu_kilitli_mi)
 
-            # Değişiklik varsa kaydet ve yenile
             if r_durum != g_verisi.get("risale") or y_durum != g_verisi.get("yasin") or t_durum != g_verisi.get("teravih"):
                 veri["gunluk_durum"][bugun_str][kisi]["risale"] = r_durum
                 veri["gunluk_durum"][bugun_str][kisi]["yasin"] = y_durum
                 veri["gunluk_durum"][bugun_str][kisi]["teravih"] = t_durum
                 veri_kaydet(veri)
                 st.rerun()
+
 with tab3: # CEZA
     st.subheader("Aktif Cezalar")
     aktif_ceza_var = False
@@ -240,7 +315,7 @@ with tab3: # CEZA
                     st.rerun()
 
 with tab4: # İSTATİSTİK
-    st.subheader("📊 30 Günlük Özet")
+    st.subheader("📊 30 Günlük Görev Özeti")
     if aktif_kullanici in YETKILI_KISILER:
         gecmis_gunler = [tarih for tarih in veri["gunluk_durum"].keys() if tarih != bugun_str]
         gosterilecek_gun_sayisi = len(gecmis_gunler)
@@ -257,12 +332,26 @@ with tab4: # İSTATİSTİK
                 if d.get("risale"): r_say += 1
                 if d.get("yasin"): y_say += 1
                 if d.get("teravih"): t_say += 1
-            
-            with st.expander(f"👤 {kisi} - Detaylar"):
+
+            with st.expander(f"👤 {kisi} - Görev Detayları"):
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Risale", f"{r_say}/{gosterilecek_gun_sayisi}", f"{(gosterilecek_gun_sayisi-r_say) * -1} Eksik")
                 m2.metric("Yasin", f"{y_say}/{gosterilecek_gun_sayisi}", f"{(gosterilecek_gun_sayisi-y_say) * -1} Eksik")
                 m3.metric("Teravih", f"{t_say}/{gosterilecek_gun_sayisi}", f"{(gosterilecek_gun_sayisi-t_say) * -1} Eksik")
+
+        st.divider()
+        
+        # --- YENİ EKLENEN TOPLU CEZA İSTATİSTİĞİ DİKDÖRTGENİ ---
+        st.subheader("⚖️ Ekip Ceza Tablosu")
+        with st.container(border=True):
+            ceza_verileri = []
+            for kisi in ekip:
+                kisi_cezalar = veri.get("cezalar", {}).get(kisi, [])
+                toplam_ceza = len(kisi_cezalar)
+                bekleyen_ceza = len([c for c in kisi_cezalar if not c.get("tamamlandi", False)])
+                ceza_verileri.append({"İsim": kisi, "Bekleyen (Aktif) Ceza": bekleyen_ceza, "Toplam Alınan Ceza": toplam_ceza})
+            
+            st.dataframe(pd.DataFrame(ceza_verileri), hide_index=True, use_container_width=True)
 
         st.divider()
         st.warning("⚠️ Tehlikeli Bölge")
@@ -271,8 +360,8 @@ with tab4: # İSTATİSTİK
             if st.button("Evet, Her Şeyi Sil ve Sıfırla", type="primary"):
                 veri["gunluk_durum"] = {}
                 veri["cezalar"] = {}
-                veri["notlar"] = []
                 veri["camasir"] = []
+                veri["nobet_notlari"] = []
                 veri_kaydet(veri)
                 st.success("Sıfırlandı!")
                 st.rerun()
@@ -295,13 +384,11 @@ with tab6: # ÇAMAŞIR MAKİNESİ
     st.header("🧺 Çamaşır Makinesi Randevusu")
     st.info("Günün 2 saatlik dilimlerinden randevu alabilirsiniz. Herkesin maksimum 3 aktif randevu hakkı vardır.")
     
-    # Kişinin kendi aktif randevu sayısını hesapla
     aktif_randevularim = [c for c in veri.get("camasir", []) if c["kisi"] == aktif_kullanici]
     st.write(f"Kalan Randevu Hakkınız: **{3 - len(aktif_randevularim)} / 3**")
     
     with st.form("randevu_al"):
         c1, c2 = st.columns(2)
-        # Bugün ve sonraki 3 gün için seçenek sunalım
         tarihler = [(tr_zamani.date() + datetime.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(4)]
         secilen_tarih = c1.selectbox("Tarih Seçin", tarihler)
         
@@ -313,7 +400,6 @@ with tab6: # ÇAMAŞIR MAKİNESİ
         secilen_saat = c2.selectbox("Saat Seçin", saatler)
         
         if st.form_submit_button("Randevu Al"):
-            # Çakışma kontrolü
             dolu_mu = any(c["tarih"] == secilen_tarih and c["saat"] == secilen_saat for c in veri["camasir"])
             if dolu_mu:
                 st.error("Bu tarih ve saat zaten dolu! Lütfen başka bir dilim seçin.")
@@ -327,7 +413,6 @@ with tab6: # ÇAMAŞIR MAKİNESİ
 
     st.divider()
     st.subheader("📅 Aktif Randevular")
-    # Randevuları tarihe ve saate göre sıraya diz
     sirali_randevular = sorted(veri["camasir"], key=lambda x: (x["tarih"], x["saat"]))
     
     if not sirali_randevular:
@@ -338,28 +423,9 @@ with tab6: # ÇAMAŞIR MAKİNESİ
             with col_tarih: st.write(f"📅 {r['tarih']}")
             with col_saat: st.write(f"⏰ {r['saat']} - **{r['kisi']}**")
             with col_btn:
-                # Sadece kendisi veya yetkililer iptal edebilir
                 if r['kisi'] == aktif_kullanici or aktif_kullanici in YETKILI_KISILER:
                     if st.button("İptal Et", key=f"iptal_camasir_{i}_{r['tarih']}"):
                         veri["camasir"].remove(r)
                         veri_kaydet(veri)
                         st.rerun()
-
-with tab7: # NOTLAR
-    st.header("Ortak Notlar")
-    for i, n in enumerate(veri.get("notlar", [])):
-        c1, c2 = st.columns([8, 1])
-        with c1: st.info(f"**{n['kim']}:** {n['metin']}")
-        with c2:
-            if n['kim'] == aktif_kullanici and st.button("🗑️", key=f"del_note_{i}"):
-                veri["notlar"].pop(i)
-                veri_kaydet(veri)
-                st.rerun()
-    
-    with st.form("not_ekle"):
-        txt = st.text_input("Not yaz...")
-        if st.form_submit_button("Ekle") and txt:
-            veri["notlar"].append({"kim": aktif_kullanici, "metin": txt, "tarih": bugun_str})
-            veri_kaydet(veri)
-            st.rerun()
 
