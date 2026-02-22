@@ -6,7 +6,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title="Ekip Takip", page_icon="🕌", layout="centered")
+st.set_page_config(page_title="RAMAZN programı", page_icon="🕌", layout="centered")
 
 # --- CSS AYARLARI ---
 st.markdown("""
@@ -171,24 +171,43 @@ with tab1: # NÖBET
     </div>
     """, unsafe_allow_html=True)
 
-with tab2: # GÖREVLER
+with tab2:
     st.header(f"Görevler ({bugun_str})")
     for kisi in ekip:
-        with st.container():
-            st.markdown(f"**👤 {kisi}**")
-            kutu_kilitli_mi = (kisi != aktif_kullanici)
-            c1, c2, c3 = st.columns(3)
+        # Her bir kişiyi şık bir çerçeve (kart) içine alıyoruz
+        with st.container(border=True):
             g_verisi = veri["gunluk_durum"][bugun_str][kisi]
             
-            with c1: r = st.checkbox("📖 Risale", value=g_verisi.get("risale", False), key=f"r_{kisi}", disabled=kutu_kilitli_mi)
-            with c2: y = st.checkbox("📿 Yasin", value=g_verisi.get("yasin", False), key=f"y_{kisi}", disabled=kutu_kilitli_mi)
-            with c3: t = st.checkbox("🕌 Teravih", value=g_verisi.get("teravih", False), key=f"t_{kisi}", disabled=kutu_kilitli_mi)
+            # Kişinin tamamladığı görev sayısını hesaplıyoruz
+            tamamlanan = sum([g_verisi.get("risale", False), g_verisi.get("yasin", False), g_verisi.get("teravih", False)])
+            
+            # Aktif kullanıcıya (giriş yapan kişiye) özel başlık stili
+            if kisi == aktif_kullanici:
+                st.markdown(f"### 👤 {kisi} (Sen)  —  `{tamamlanan}/3`")
+            else:
+                st.markdown(f"#### 👤 {kisi}  —  `{tamamlanan}/3`")
 
-            if (r != g_verisi.get("risale")) or (y != g_verisi.get("yasin")) or (t != g_verisi.get("teravih")):
-                veri["gunluk_durum"][bugun_str][kisi] = {"risale": r, "yasin": y, "teravih": t}
+            # Görevler tamsa tebrik mesajı, değilse küçük bir ilerleme çubuğu
+            if tamamlanan == 3:
+                st.success("🌟 Tüm görevler tamamlandı, tebrikler!")
+            else:
+                st.progress(tamamlanan / 3) # 0.0, 0.33, 0.66 gibi ilerleme gösterir
+                st.write("") # Araya küçük bir boşluk
+
+            kutu_kilitli_mi = (kisi != aktif_kullanici)
+            col1, col2, col3 = st.columns(3)
+            
+            with col1: r_durum = st.checkbox("📖 Risale", value=g_verisi.get("risale", False), key=f"r_{kisi}", disabled=kutu_kilitli_mi)
+            with col2: y_durum = st.checkbox("📿 Yasin", value=g_verisi.get("yasin", False), key=f"y_{kisi}", disabled=kutu_kilitli_mi)
+            with col3: t_durum = st.checkbox("🕌 Teravih", value=g_verisi.get("teravih", False), key=f"t_{kisi}", disabled=kutu_kilitli_mi)
+
+            # Değişiklik varsa kaydet ve yenile
+            if r_durum != g_verisi.get("risale") or y_durum != g_verisi.get("yasin") or t_durum != g_verisi.get("teravih"):
+                veri["gunluk_durum"][bugun_str][kisi]["risale"] = r_durum
+                veri["gunluk_durum"][bugun_str][kisi]["yasin"] = y_durum
+                veri["gunluk_durum"][bugun_str][kisi]["teravih"] = t_durum
                 veri_kaydet(veri)
-                st.toast("Kaydedildi!")
-
+                st.rerun()
 with tab3: # CEZA
     st.subheader("Aktif Cezalar")
     aktif_ceza_var = False
@@ -343,3 +362,4 @@ with tab7: # NOTLAR
             veri["notlar"].append({"kim": aktif_kullanici, "metin": txt, "tarih": bugun_str})
             veri_kaydet(veri)
             st.rerun()
+
