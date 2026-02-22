@@ -1,8 +1,9 @@
 import streamlit as st
 import json
 import datetime
-import os
 import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title="Ekip Takip", page_icon="🕌", layout="centered")
@@ -10,21 +11,53 @@ st.set_page_config(page_title="Ekip Takip", page_icon="🕌", layout="centered")
 # --- CSS AYARLARI ---
 st.markdown("""
 <style>
-    .block-container {
-        padding-top: 5rem;
-        padding-bottom: 5rem;
-    }
-    .login-box {
-        background-color: #f0f2f6;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-    }
+    .block-container { padding-top: 2rem; padding-bottom: 5rem; }
+    .stButton>button { width: 100%; border-radius: 5px; }
 </style>
 """, unsafe_allow_html=True)
 
-DOSYA = "veri.json"
+# --- GOOGLE SHEETS BAĞLANTISI ---
+SHEET_ADI = "EkipTakipVeri" # Google Sheets'teki dosya adınız
 
+def get_google_sheet():
+    """Google Sheets bağlantısını kurar."""
+    # Streamlit Secrets'tan bilgileri alıyoruz
+    creds_dict = st.secrets["gcp_service_account"]
+    
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    
+    try:
+        sheet = client.open(SHEET_ADI).sheet1
+        return sheet
+    except Exception as e:
+        st.error(f"Google Sheet bulunamadı! Lütfen dosya adının '{SHEET_ADI}' olduğundan ve servis hesabıyla paylaşıldığından emin olun.")
+        st.stop()
+
+def veri_yukle():
+    """Veriyi Google Sheets A1 hücresinden çeker."""
+    try:
+        sheet = get_google_sheet()
+        veri_raw = sheet.acell('A1').value
+        if veri_raw:
+            return json.loads(veri_raw)
+        else:
+            return {"gunluk_durum": {}, "cezalar": {}, "notlar": []}
+    except Exception as e:
+        # Eğer okuma hatası olursa boş dön
+        return {"gunluk_durum": {}, "cezalar": {}, "notlar": []}
+
+def veri_kaydet(veri):
+    """Veriyi Google Sheets A1 hücresine yazar."""
+    try:
+        sheet = get_google_sheet()
+        veri_str = json.dumps(veri, ensure_ascii=False)
+        sheet.update_acell('A1', veri_str)
+    except Exception as e:
+        st.error(f"Kayıt hatası: {e}")
+
+# --- SABİTLER ---
 ekip = ["Ferhat", "Emre", "Selim", "Mustafa", "Veysel", "Furkan abi", "Osman"]
 nobet_gunleri = {
     6: "Ferhat", 0: "Emre", 1: "Selim", 2: "Mustafa", 3: "Veysel", 4: "Furkan abi", 5: "Osman"
@@ -44,48 +77,37 @@ temizlik_programi = [
     {"Hafta": "6. Hafta", "Banyo": "Selim", "Tuvalet": "Emre", "Mutfak": "Veysel, Mustafa", "Salon": "Osman", "İzinli": "Ferhat"}
 ]
 
-def veri_yukle():
-    if os.path.exists(DOSYA):
-        try:
-            with open(DOSYA, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
-            return {"gunluk_durum": {}, "cezalar": {}, "notlar": []}
-    return {"gunluk_durum": {}, "cezalar": {}, "notlar": []}
+# --- VERİ YÜKLEME ---
+if "veri_cache" not in st.session_state:
+    st.session_state["veri_cache"] = veri_yukle()
+veri = st.session_state["veri_cache"]
 
-def veri_kaydet(veri):
-    with open(DOSYA, "w", encoding="utf-8") as f:
-        json.dump(veri, f, ensure_ascii=False, indent=4)
-
-veri = veri_yukle()
-
-# --- SAAT VE TARİH AYARLARI ---
-# 1. Türkiye Saatini Bul (+3 Saat)
+# --- SAAT VE TARİH ---
 tr_zamani = datetime.datetime.now() + datetime.timedelta(hours=3)
-
-# 2. GÖREVLER İÇİN TARİH (03:30'da değişsin)
-# Eğer saat 03:30'dan önceyse, görevler hala "DÜNÜN" görevidir.
 if tr_zamani.hour < 3 or (tr_zamani.hour == 3 and tr_zamani.minute < 30):
     gorev_tarihi = tr_zamani.date() - datetime.timedelta(days=1)
 else:
     gorev_tarihi = tr_zamani.date()
-
 bugun_str = str(gorev_tarihi)
 
-# Veri Kontrolleri
+# Veri Başlatma Kontrolleri
 if "gunluk_durum" not in veri: veri["gunluk_durum"] = {}
 if "cezalar" not in veri: veri["cezalar"] = {}
 if "notlar" not in veri: veri["notlar"] = []
 
 if bugun_str not in veri["gunluk_durum"]:
     veri["gunluk_durum"][bugun_str] = {kisi: {"risale": False, "yasin": False, "teravih": False} for kisi in ekip}
+    # İlk açılışta hemen kaydet ki bulutta da bu günün kaydı oluşsun
     veri_kaydet(veri)
 
-# Eski verileri temizle
+# Eski verileri temizleme (30 günden eski)
 otuz_gun_once = str(datetime.date.today() - datetime.timedelta(days=30))
-kayitli_tarihler = sorted(list(veri["gunluk_durum"].keys()))
-for eski_tarih in kayitli_tarihler:
-    if eski_tarih < otuz_gun_once: del veri["gunluk_durum"][eski_tarih]
+degisiklik_var = False
+for eski_tarih in list(veri["gunluk_durum"].keys()):
+    if eski_tarih < otuz_gun_once: 
+        del veri["gunluk_durum"][eski_tarih]
+        degisiklik_var = True
+if degisiklik_var: veri_kaydet(veri)
 
 # --- LOGIN SİSTEMİ ---
 if "giris_yapan" not in st.session_state:
@@ -116,33 +138,26 @@ if st.session_state["giris_yapan"] is None:
 
 aktif_kullanici = st.session_state["giris_yapan"]
 
-# --- ÜST BAR ---
+# --- ARAYÜZ ---
 col_header, col_logout = st.columns([7, 3])
 with col_header:
     st.markdown(f"### 👋 Hoş geldin, {aktif_kullanici}")
 with col_logout:
-    if st.button("Çıkış Yap", use_container_width=True, key="cikis_btn_unique"):
+    if st.button("Çıkış Yap", key="logout_btn"):
         st.session_state["giris_yapan"] = None
         st.query_params.clear()
         st.rerun()
 
-# --- TABLAR ---
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["🛡️ Nöbet", "📚 Görev", "⚖️ Ceza", "📊 İstatistik", "🧹 Temizlik", "📝 Notlar", "💾 Yedekle"])
 
-with tab1:
-    # --- NÖBETÇİ DEĞİŞİMİ SAAT 23:00 AYARI ---
+with tab1: # NÖBET
     if tr_zamani.hour >= 23:
-        # Saat 23:00 ve sonrasıysa YARININ nöbetçisini göster
         nobet_icin_tarih = tr_zamani + datetime.timedelta(days=1)
         baslik_ek = "(Yarının Nöbetçisi - 23:00'den Sonra)"
     else:
-        # Saat 23:00'den önceyse BUGÜNÜN nöbetçisini göster
         nobet_icin_tarih = tr_zamani
         baslik_ek = ""
-
-    bugun_index = nobet_icin_tarih.weekday()
-    gunun_nobetcisi = nobet_gunleri[bugun_index]
-    
+    gunun_nobetcisi = nobet_gunleri[nobet_icin_tarih.weekday()]
     st.markdown(f"""
     <div style="background-color:#d4edda;padding:20px;border-radius:10px;text-align:center;border:2px solid #c3e6cb;">
         <h3 style="color:#155724;margin:0;">Nöbetçi {baslik_ek}</h3>
@@ -151,175 +166,161 @@ with tab1:
     </div>
     """, unsafe_allow_html=True)
 
-with tab2:
+with tab2: # GÖREVLER
     st.header(f"Görevler ({bugun_str})")
     for kisi in ekip:
         with st.container():
             st.markdown(f"**👤 {kisi}**")
             kutu_kilitli_mi = (kisi != aktif_kullanici)
-            col1, col2, col3 = st.columns(3)
+            c1, c2, c3 = st.columns(3)
             g_verisi = veri["gunluk_durum"][bugun_str][kisi]
             
-            with col1: r_durum = st.checkbox("📖 Risale", value=g_verisi.get("risale", False), key=f"r_{kisi}", disabled=kutu_kilitli_mi)
-            with col2: y_durum = st.checkbox("📿 Yasin", value=g_verisi.get("yasin", False), key=f"y_{kisi}", disabled=kutu_kilitli_mi)
-            with col3: t_durum = st.checkbox("🕌 Teravih", value=g_verisi.get("teravih", False), key=f"t_{kisi}", disabled=kutu_kilitli_mi)
-                
-            if r_durum != g_verisi.get("risale") or y_durum != g_verisi.get("yasin") or t_durum != g_verisi.get("teravih"):
-                veri["gunluk_durum"][bugun_str][kisi]["risale"] = r_durum
-                veri["gunluk_durum"][bugun_str][kisi]["yasin"] = y_durum
-                veri["gunluk_durum"][bugun_str][kisi]["teravih"] = t_durum
-                veri_kaydet(veri)
-                st.rerun()
-            st.divider()
+            with c1: r = st.checkbox("📖 Risale", value=g_verisi.get("risale", False), key=f"r_{kisi}", disabled=kutu_kilitli_mi)
+            with c2: y = st.checkbox("📿 Yasin", value=g_verisi.get("yasin", False), key=f"y_{kisi}", disabled=kutu_kilitli_mi)
+            with c3: t = st.checkbox("🕌 Teravih", value=g_verisi.get("teravih", False), key=f"t_{kisi}", disabled=kutu_kilitli_mi)
 
-with tab3:
+            if (r != g_verisi.get("risale")) or (y != g_verisi.get("yasin")) or (t != g_verisi.get("teravih")):
+                veri["gunluk_durum"][bugun_str][kisi] = {"risale": r, "yasin": y, "teravih": t}
+                veri_kaydet(veri)
+                st.toast("Kaydedildi!")
+
+with tab3: # CEZA
     st.subheader("Aktif Cezalar")
     aktif_ceza_var = False
     for kisi, ceza_listesi in veri.get("cezalar", {}).items():
         for i, ceza in enumerate(ceza_listesi):
             if not ceza.get("tamamlandi", False):
                 aktif_ceza_var = True
-                col1, col2 = st.columns([8, 3])
-                with col1: st.error(f"**{kisi}:** {ceza['neden']}")
-                with col2:
+                c1, c2 = st.columns([8, 3])
+                with c1: st.error(f"**{kisi}:** {ceza['neden']}")
+                with c2:
                     if aktif_kullanici == kisi or aktif_kullanici in YETKILI_KISILER:
                         if st.button("Tamamla", key=f"ct_{kisi}_{i}"):
                             ceza["tamamlandi"] = True
                             veri_kaydet(veri)
                             st.rerun()
-    if not aktif_ceza_var: st.success("Herkes temiz! Ceza yok.")
-    
+    if not aktif_ceza_var: st.success("Herkes temiz!")
+
     if aktif_kullanici in YETKILI_KISILER:
         st.divider()
-        st.caption("Yetkili Paneli")
         with st.form("ceza_form"):
-            c_col1, c_col2 = st.columns([1, 2])
-            with c_col1: ck = st.selectbox("Kime?", ekip)
-            with c_col2: cn = st.text_input("Nedeni?")
-            if st.form_submit_button("Cezayı Yaz"):
-                if cn:
-                    if ck not in veri["cezalar"]: veri["cezalar"][ck] = []
-                    veri["cezalar"][ck].append({"neden": cn, "tarih": bugun_str, "tamamlandi": False})
+            col_kime, col_neden = st.columns([1, 2])
+            kime = col_kime.selectbox("Kime?", ekip)
+            neden = col_neden.text_input("Neden?")
+            if st.form_submit_button("Ceza Yaz"):
+                if neden:
+                    if kime not in veri["cezalar"]: veri["cezalar"][kime] = []
+                    veri["cezalar"][kime].append({"neden": neden, "tarih": bugun_str, "tamamlandi": False})
                     veri_kaydet(veri)
                     st.success("Yazıldı!")
                     st.rerun()
 
-with tab4:
+with tab4: # İSTATİSTİK
     st.subheader("📊 30 Günlük Özet")
     if aktif_kullanici in YETKILI_KISILER:
-        toplam_gun = len(veri["gunluk_durum"])
-        st.info(f"Kayıtlı Gün Sayısı: **{toplam_gun}**")
+        toplam_gun_sayisi = len(veri["gunluk_durum"])
         
+        # Bugün henüz kimse işlem yapmadıysa, bugünü istatistiğe dahil etme
+        bugun_bos_mu = True
+        if bugun_str in veri["gunluk_durum"]:
+            for k in ekip:
+                d = veri["gunluk_durum"][bugun_str][k]
+                if d["risale"] or d["yasin"] or d["teravih"]:
+                    bugun_bos_mu = False
+                    break
+        
+        if bugun_bos_mu and toplam_gun_sayisi > 0:
+            gosterilecek_gun_sayisi = toplam_gun_sayisi - 1
+        else:
+            gosterilecek_gun_sayisi = toplam_gun_sayisi
+            
+        if gosterilecek_gun_sayisi == 0: gosterilecek_gun_sayisi = 1
+
+        st.info(f"Hesaplanan Gün Sayısı: **{gosterilecek_gun_sayisi}**")
+
         for kisi in ekip:
             r_say, y_say, t_say = 0, 0, 0
-            for tarih in veri["gunluk_durum"]:
-                d = veri["gunluk_durum"][tarih].get(kisi, {})
+            for tarih, gun_verisi in veri["gunluk_durum"].items():
+                if tarih == bugun_str and bugun_bos_mu:
+                    continue
+                d = gun_verisi.get(kisi, {})
                 if d.get("risale"): r_say += 1
                 if d.get("yasin"): y_say += 1
                 if d.get("teravih"): t_say += 1
             
             with st.expander(f"👤 {kisi} - Detaylar"):
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Risale", f"{r_say} / {toplam_gun}", f"-{toplam_gun-r_say} Eksik")
-                m2.metric("Yasin", f"{y_say} / {toplam_gun}", f"-{toplam_gun-y_say} Eksik")
-                m3.metric("Teravih", f"{t_say} / {toplam_gun}", f"-{toplam_gun-t_say} Eksik")
-        
-        st.divider()
-        st.subheader("⚖️ Ceza Geçmişi")
-        for kisi in ekip:
-            ceza_listesi = veri.get("cezalar", {}).get(kisi, [])
-            if ceza_listesi:
-                with st.expander(f"📌 {kisi} - Ceza Kayıtları"):
-                    for c in ceza_listesi:
-                        ikon = "✅ Tamamlandı" if c.get("tamamlandi") else "❌ Bekliyor"
-                        st.write(f"**{ikon}** - {c['neden']} *({c['tarih']})*")
-        
+                # İstediğiniz gibi kesirli formatta (örn: 3/4) gösterilir
+                m1.metric("Risale", f"{r_say}/{gosterilecek_gun_sayisi}", f"{(gosterilecek_gun_sayisi-r_say) * -1} Eksik")
+                m2.metric("Yasin", f"{y_say}/{gosterilecek_gun_sayisi}", f"{(gosterilecek_gun_sayisi-y_say) * -1} Eksik")
+                m3.metric("Teravih", f"{t_say}/{gosterilecek_gun_sayisi}", f"{(gosterilecek_gun_sayisi-t_say) * -1} Eksik")
+
         st.divider()
         st.warning("⚠️ Tehlikeli Bölge")
-        if st.button("Tüm Verileri ve İstatistikleri Sıfırla", type="primary"):
-            veri["gunluk_durum"] = {}
-            veri["cezalar"] = {}
-            veri_kaydet(veri)
-            st.success("Sıfırlandı!")
-            st.rerun()
+        with st.expander("Verileri Sıfırla (Dikkat!)"):
+            st.error("Bu işlem geri alınamaz!")
+            if st.button("Evet, Her Şeyi Sil ve Sıfırla", type="primary"):
+                veri["gunluk_durum"] = {}
+                veri["cezalar"] = {}
+                veri["notlar"] = []
+                veri_kaydet(veri)
+                st.success("Sıfırlandı!")
+                st.rerun()
     else:
-        st.warning("Bu alanı sadece yetkililer görebilir.")
+        st.warning("Yetkili değilsiniz.")
 
-with tab5:
-    st.subheader("🧹 Temizlik Programı")
-    # Haftayı TR saatine göre hesapla
+with tab5: # TEMİZLİK
     yh = tr_zamani.isocalendar()[1]
-    index = yh % 6
-    ap = temizlik_programi[index]
+    ap = temizlik_programi[yh % 6]
     st.info(f"📍 **Şu anki Hafta: {ap['Hafta']}**")
-    col_t1, col_t2 = st.columns(2)
-    with col_t1:
-        st.markdown(f"**🚿 Banyo:**\n{ap['Banyo']}")
-        st.markdown(f"**🚽 Tuvalet:**\n{ap['Tuvalet']}")
-    with col_t2:
-        st.markdown(f"**🍽️ Mutfak:**\n{ap['Mutfak']}")
-        st.markdown(f"**🛋️ Salon:**\n{ap['Salon']}")
+    c1, c2 = st.columns(2)
+    c1.markdown(f"**🚿 Banyo:** {ap['Banyo']}")
+    c1.markdown(f"**🚽 Tuvalet:** {ap['Tuvalet']}")
+    c2.markdown(f"**🍽️ Mutfak:** {ap['Mutfak']}")
+    c2.markdown(f"**🛋️ Salon:** {ap['Salon']}")
     st.error(f"😴 **İzinli:** {ap['İzinli']}")
-    st.divider()
-    st.caption("📅 Tüm Haftaların Programı")
-    df_temizlik = pd.DataFrame(temizlik_programi)
-    st.dataframe(df_temizlik, hide_index=True, use_container_width=True)
+    st.dataframe(pd.DataFrame(temizlik_programi), hide_index=True, use_container_width=True)
 
-with tab6:
+with tab6: # NOTLAR
     st.header("Ortak Notlar")
-    notlar_listesi = veri.get("notlar", [])
-    for i, not_verisi in enumerate(notlar_listesi):
-        col1, col2 = st.columns([8, 1])
-        with col1:
-            if isinstance(not_verisi, dict):
-                st.info(f"**{not_verisi['kim']}:** {not_verisi['metin']}")
-            else: st.info(not_verisi)
-        with col2:
-            if isinstance(not_verisi, dict) and not_verisi['kim'] == aktif_kullanici:
-                if st.button("🗑️", key=f"nsil_{i}"):
-                    veri["notlar"].pop(i)
-                    veri_kaydet(veri)
-                    st.rerun()
-    with st.form("not_form"):
-        yeni_not = st.text_input("Notunuzu yazın...")
-        if st.form_submit_button("Paylaş"):
-            if yeni_not:
-                yeni_not_objesi = {"kim": aktif_kullanici, "metin": yeni_not, "tarih": bugun_str}
-                veri["notlar"].append(yeni_not_objesi)
+    for i, n in enumerate(veri.get("notlar", [])):
+        c1, c2 = st.columns([8, 1])
+        with c1: st.info(f"**{n['kim']}:** {n['metin']}")
+        with c2:
+            if n['kim'] == aktif_kullanici and st.button("🗑️", key=f"del_note_{i}"):
+                veri["notlar"].pop(i)
                 veri_kaydet(veri)
                 st.rerun()
-
-with tab7:
-    st.header("💾 Veri Yedekleme (Kurtarıcı)")
-    st.info("Eğer site sıfırlanırsa verileri kaybetmemek için buradan yedek al!")
     
-    # 1. VERİYİ İNDİRME BUTONU
+    with st.form("not_ekle"):
+        txt = st.text_input("Not yaz...")
+        if st.form_submit_button("Ekle") and txt:
+            veri["notlar"].append({"kim": aktif_kullanici, "metin": txt, "tarih": bugun_str})
+            veri_kaydet(veri)
+            st.rerun()
+
+with tab7: # YEDEKLEME
+    st.header("Bulut Yedekleme")
+    st.success("Verileriniz artık otomatik olarak Google Cloud üzerinde saklanıyor.")
+    
     json_verisi = json.dumps(veri, ensure_ascii=False, indent=4)
-    tarih_saat_str = tr_zamani.strftime("%Y-%m-%d")
     st.download_button(
-        label="📥 Güncel Verileri İndir (Yedekle)",
+        label="📥 Güncel Verileri İndir (Manuel Yedek)",
         data=json_verisi,
-        file_name=f"ekip_takip_yedek_{tarih_saat_str}.json",
+        file_name=f"ekip_takip_yedek_{tr_zamani.strftime('%Y-%m-%d')}.json",
         mime="application/json"
     )
     
-    st.divider()
-    
-    # 2. VERİYİ GERİ YÜKLEME KUTUSU (Sadece Yetkililer)
     if aktif_kullanici in YETKILI_KISILER:
-        st.subheader("📤 Yedeği Geri Yükle")
-        st.warning("DİKKAT: Dosya yüklersen şu anki verilerin silinir ve yüklediğin dosyadaki veriler geçerli olur.")
-        
-        yuklenen_dosya = st.file_uploader("Elinizdeki yedek .json dosyasını buraya bırakın", type=["json"])
-        
-        if yuklenen_dosya is not None:
-            if st.button("Verileri Kurtar / Yükle"):
-                try:
-                    eski_veri = json.load(yuklenen_dosya)
-                    veri_kaydet(eski_veri)
-                    st.success("Veriler başarıyla kurtarıldı! Sayfa yenileniyor...")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Hata oluştu! Dosya bozuk olabilir. Hata: {e}")
-    else:
-        st.caption("Veri yükleme işlemi sadece yetkililer içindir.")
+        st.divider()
+        st.subheader("Yedeği Geri Yükle")
+        yd = st.file_uploader("Yedek JSON dosyası seç", type=["json"])
+        if yd and st.button("Yükle ve Değiştir"):
+            try:
+                yeni_veri = json.load(yd)
+                veri_kaydet(yeni_veri)
+                st.session_state["veri_cache"] = yeni_veri 
+                st.success("Başarıyla yüklendi!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Hata: {e}")
