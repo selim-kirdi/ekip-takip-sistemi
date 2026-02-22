@@ -159,10 +159,10 @@ if arkaplan_url:
     /* İçerik kutusunun daha okunaklı ve şık stili (Mobilde resmi göstermesi için güncellendi) */
     .block-container {{
         /* Şeffaflık %88'den %60'a düşürüldü, böylece resim daha net görünecek */
-        background-color: rgba(15, 15, 20, 0.40) !important; 
+        background-color: rgba(15, 15, 20, 0.35) !important; 
         /* Bulanıklık azaltıldı */
         backdrop-filter: blur(4px);
-        -webkit-backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(3px);
         border: 1px solid rgba(255, 255, 255, 0.15);
         border-radius: 20px;
         padding: 1.5rem !important;
@@ -429,6 +429,7 @@ with tab6: # ÇAMAŞIR MAKİNESİ
                         veri["camasir"].remove(r)
                         veri_kaydet(veri)
                         st.rerun()
+
 
 
 
